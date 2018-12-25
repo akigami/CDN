@@ -6,7 +6,6 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -71,8 +70,8 @@ func resizeImageFromFile(inputPath string, outputPath string, width int, height 
 	resizeImage(buffer, outputPath, width, height)
 }
 
-func initConfig() (string, string, []string) {
-	file, err := ioutil.ReadFile("config.yml")
+func initConfig(executablePath string) (string, string, []string) {
+	file, err := ioutil.ReadFile(path.Join(executablePath, "config.yml"))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(0)
@@ -113,7 +112,13 @@ func initConfig() (string, string, []string) {
 }
 
 func main() {
-	port, accessToken, ref := initConfig()
+	ex, err := os.Executable()
+	if err != nil {
+		panic(err)
+	}
+	executablePath := filepath.Dir(ex)
+
+	port, accessToken, ref := initConfig(executablePath)
 	app := iris.New().Configure(iris.WithConfiguration(iris.Configuration{
 		PostMaxMemory: 5 << 20,
 	}))
@@ -135,7 +140,7 @@ func main() {
 	})
 
 	app.Get("/404.jpg", func(ctx iris.Context) {
-		ctx.ServeFile("./images/image_not_found.jpg", false)
+		ctx.ServeFile(path.Join(executablePath, "images", "image_not_found.jpg"), false)
 	})
 
 	app.Get("/images/{directory:path}", func(ctx iris.Context) {
@@ -153,8 +158,6 @@ func main() {
 					format = "webp"
 				}
 				var directory = ctx.Params().Get("directory")
-				_, callerFile, _, _ := runtime.Caller(0)
-				executablePath := filepath.Dir(callerFile)
 				var imageFolder = path.Join(executablePath, "static", directory)
 				var widthPath = path.Join(imageFolder, fmt.Sprintf("%d.%s", width, format))
 				if _, err := os.Stat(widthPath); !os.IsNotExist(err) {
@@ -185,8 +188,6 @@ func main() {
 				format = "webp"
 			}
 			var directory = ctx.Params().Get("directory")
-			_, callerFile, _, _ := runtime.Caller(0)
-			executablePath := filepath.Dir(callerFile)
 			var staticPath = path.Join(executablePath, "static", directory, "image."+format)
 			if _, err := os.Stat(staticPath); os.IsNotExist(err) {
 				ctx.Redirect("/404.jpg")
@@ -235,10 +236,6 @@ func main() {
 		ctx.JSON(iris.Map{
 			"path": fmt.Sprintf("/images/%d/%d/%d/%s", year, month, day, id),
 		})
-	})
-
-	app.Get("/hello", func(ctx iris.Context) {
-		ctx.JSON(iris.Map{"message": "Hello Iris!"})
 	})
 
 	app.Run(iris.Addr(":"+port), iris.WithoutServerError(iris.ErrServerClosed))
